@@ -6,6 +6,13 @@ interface User {
   id: string;
   idNumber: string;
   phoneNumber: string;
+  role?: 'user' | 'admin';
+}
+
+interface Admin {
+  id: string;
+  username: string;
+  role: 'admin';
 }
 
 interface PendingUser {
@@ -18,19 +25,25 @@ interface PendingUser {
 
 interface AuthContextType {
   user: User | null;
+  admin: Admin | null;
   login: (idNumber: string, password: string) => Promise<boolean>;
+  loginAdmin: (username: string, password: string) => Promise<boolean>;
   register: (idNumber: string, phoneNumber: string, password: string) => Promise<boolean>;
   sendOTP: (idNumber: string, phoneNumber: string, password: string) => Promise<{ success: boolean; otp?: string; error?: string }>;
   verifyOTP: (phoneNumber: string, otp: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  logoutAdmin: () => void;
   isAuthenticated: boolean;
+  isAdminAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [admin, setAdmin] = useState<Admin | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   useEffect(() => {
     // Check if user is logged in on mount
@@ -38,6 +51,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (storedUser) {
       setUser(JSON.parse(storedUser));
       setIsAuthenticated(true);
+    }
+
+    // Check if admin is logged in
+    const storedAdmin = localStorage.getItem('admin');
+    if (storedAdmin) {
+      setAdmin(JSON.parse(storedAdmin));
+      setIsAdminAuthenticated(true);
+    }
+
+    // Initialize admin account if not exists
+    const admins = JSON.parse(localStorage.getItem('admins') || '[]');
+    if (admins.length === 0) {
+      const defaultAdmin = {
+        id: 'admin1',
+        username: 'admin',
+        password: 'admin123', // Default password
+        role: 'admin'
+      };
+      localStorage.setItem('admins', JSON.stringify([defaultAdmin]));
     }
   }, []);
 
@@ -176,14 +208,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginAdmin = async (username: string, password: string): Promise<boolean> => {
+    try {
+      const admins = JSON.parse(localStorage.getItem('admins') || '[]');
+      const adminUser = admins.find((a: any) => a.username === username && a.password === password);
+      
+      if (adminUser) {
+        const adminData = {
+          id: adminUser.id,
+          username: adminUser.username,
+          role: 'admin' as const,
+        };
+        setAdmin(adminData);
+        setIsAdminAuthenticated(true);
+        localStorage.setItem('admin', JSON.stringify(adminData));
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Admin login error:', error);
+      return false;
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('user');
   };
 
+  const logoutAdmin = () => {
+    setAdmin(null);
+    setIsAdminAuthenticated(false);
+    localStorage.removeItem('admin');
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, register, sendOTP, verifyOTP, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      admin,
+      login, 
+      loginAdmin,
+      register, 
+      sendOTP, 
+      verifyOTP, 
+      logout,
+      logoutAdmin,
+      isAuthenticated,
+      isAdminAuthenticated
+    }}>
       {children}
     </AuthContext.Provider>
   );
